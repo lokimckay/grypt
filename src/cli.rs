@@ -9,10 +9,9 @@ pub fn run() -> Result<(), Error> {
     match cli.command {
         Commands::Init {
             passphrase,
-            repository_path,
-            passphrase_path,
+            config_path,
         } => {
-            init(&repository_path, &passphrase_path, &passphrase)?;
+            init(&passphrase, &config_path)?;
         }
         Commands::Clean { passphrase_path } => {
             let passphrase = read_passphrase(&passphrase_path)?;
@@ -36,7 +35,7 @@ pub fn run() -> Result<(), Error> {
 #[derive(Parser)]
 #[command(
     name = "grypt",
-    about = "Git filter encryption tool using age",
+    about = "Git filter encryption tool via age",
     arg_required_else_help = true
 )]
 pub struct Cli {
@@ -52,27 +51,24 @@ pub enum Commands {
         #[arg(short = 'p', long)]
         passphrase: String,
         /// Path to repo
-        #[arg(short = 'r', long, default_value = ".")]
-        repository_path: PathBuf,
-        /// Path to passphrase file
-        #[arg(short = 'f', long, default_value = ".passphrase")]
-        passphrase_path: PathBuf,
+        #[arg(short = 'c', long, default_value = ".grypt.toml")]
+        config_path: PathBuf,
     },
 
     /// Encrypt stdin -> stdout
     Clean {
         /// Path to passphrase file
-        #[arg(short = 'f', long, default_value = ".passphrase")]
+        #[arg(short = 'p', long, default_value = ".passphrase")]
         passphrase_path: PathBuf,
     },
 
     /// Decrypt stdin -> stdout
     Smudge {
         /// Path to passphrase file
-        #[arg(short = 'f', long, default_value = ".passphrase")]
+        #[arg(short = 'p', long, default_value = ".passphrase")]
         passphrase_path: PathBuf,
         /// Path to file to decrypt. Reads from stdin if not specified.
-        #[arg(short = 'i', long)]
+        #[arg(short = 'f', long)]
         file_path: Option<PathBuf>,
     },
 }

@@ -1,21 +1,25 @@
 use assert_cmd::Command;
 use git2::Repository;
 use std::fs::{self};
-use std::path::PathBuf;
-use tempfile::{TempDir, tempdir_in};
+use std::path::{Path, PathBuf};
+use tempfile::tempdir_in;
 
 type Error = Box<dyn std::error::Error>;
 const PASSPHRASE: &str = "supersecret";
+const SECRET_NOTE: &str = "# Secret Note\nBank: 123456";
 
 #[test]
 fn test_encrypt_decrypt_roundtrip() -> Result<(), Error> {
     let temp_dir = tempdir_in(".")?;
-    let file_path = create_file(&temp_dir, "notes.md", "# Secret Note\nBank: 123456");
+    let file_path = create_secret_file(&temp_dir.path().join("notes.md"))?;
     let enc_path = temp_dir.path().join("notes.md.age");
     let dec_path = temp_dir.path().join("notes_decrypted.md");
 
     grypt::clean_file_to_file(&file_path, &enc_path, PASSPHRASE)?;
     assert!(enc_path.exists());
+
+    let failure = grypt::smudge_file_to_file(&enc_path, &dec_path, "wrongpassphrase");
+    assert!(failure.is_err());
 
     grypt::smudge_file_to_file(&enc_path, &dec_path, PASSPHRASE)?;
     let decrypted_contents = fs::read_to_string(&dec_path)?;
@@ -30,21 +34,17 @@ fn test_git_commit_encrypt() -> Result<(), Error> {
     let mut grypt_cmd = Command::cargo_bin("grypt")?;
     let temp_dir = tempdir_in(".")?;
     let repo_path = temp_dir.path();
-    let passphrase_path = repo_path.join(".passphrase");
-    let notes_path = repo_path.join("notes.md");
+    let config_path = repo_path.join(".grypt.toml");
+    create_secret_file(&repo_path.join("notes.md"))?;
 
     grypt_cmd
         .arg("init")
         .arg("--passphrase")
         .arg(PASSPHRASE)
-        .arg("--repository-path")
-        .arg(repo_path)
-        .arg("--passphrase-path")
-        .arg(passphrase_path)
+        .arg("--config-path")
+        .arg(config_path)
         .assert()
         .success();
-
-    fs::write(&notes_path, "# Note\nBank: 123456")?;
 
     Command::new("git")
         .args(&["add", "."])
@@ -63,21 +63,21 @@ fn test_git_commit_encrypt() -> Result<(), Error> {
     let commit = head.peel_to_commit()?;
     let tree = commit.tree()?;
 
-    let entry = tree.get_path(std::path::Path::new("notes.md"))?;
+    let entry = tree.get_path(Path::new("notes.md"))?;
     let blob = repo.find_blob(entry.id())?;
     let contents = blob.content();
 
     assert!(
-        !contents.windows("# Note\nBank: 123456".len())
-            .any(|w| w == b"# Note\nBank: 123456"),
+        !contents
+            .windows(SECRET_NOTE.len())
+            .any(|w| w == SECRET_NOTE.as_bytes()),
         "Plaintext should not be committed!"
     );
 
     Ok(())
 }
 
-fn create_file(repo: &TempDir, name: &str, contents: &str) -> PathBuf {
-    let path = repo.path().join(name);
-    fs::write(&path, contents).unwrap();
-    path
+fn create_secret_file(path: &Path) -> Result<PathBuf, Error> {
+    fs::write(path, SECRET_NOTE)?;
+    Ok(path.to_path_buf())
 }

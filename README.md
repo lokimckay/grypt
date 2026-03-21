@@ -1,6 +1,6 @@
 # Grypt
 
-Encrypt all files in a git repository with a passphrase using `age`.
+Encrypt all files in a git repository with a passphrase using [`age`](https://crates.io/crates/age).
 
 ## Usage
 
@@ -18,3 +18,19 @@ git push
 Pushed files will be encrypted with the passphrase `secretpassphrase`.
 
 ### Cloning a repository
+
+TBA
+
+## Development
+
+### Running commands
+
+```bash
+cargo run init -c ./tmp/.grypt.toml -p passphrase
+```
+
+### Testing
+
+```bash
+cargo test
+```
