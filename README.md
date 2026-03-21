@@ -10,7 +10,7 @@ Encrypt all files in a git repository with a passphrase using [`age`](https://cr
 
 ## Should you use this?
 
-I wouldn't recommend using this project to store business critical workplace secrets.
+I wouldn't recommend using this project to store business critical secrets.
 
 I created this simple tool so I could store personal documents in private repositories with a little more security.
 If you forget your passphrase and lose your local copy of the repository, the encrypted data will be lost forever.
@@ -19,7 +19,7 @@ If you forget your passphrase and lose your local copy of the repository, the en
 
 ### Pushing to a remote repository
 
-```bash
+```shell
 cargo install --git https://github.com/lokimckay/grypt
 cd /path/to/repo
 grypt init -p secretpassphrase
@@ -33,17 +33,3 @@ Pushed files will be encrypted with the passphrase `secretpassphrase`.
 ### Cloning a repository
 
 TBA
-
-## Development
-
-### Running commands
-
-```bash
-cargo run init -c ./tmp/.grypt.toml -p passphrase
-```
-
-### Testing
-
-```bash
-cargo test
-```
