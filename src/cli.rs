@@ -2,9 +2,12 @@ use crate::Error;
 use clap::{Parser, Subcommand};
 use grypt::{clean, init, read_passphrase, smudge, smudge_file};
 use std::path::PathBuf;
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 pub fn run() -> Result<(), Error> {
+    init_tracing();
     let cli = Cli::parse();
+    tracing::debug!("CLI parsed: {:?}", cli);
 
     match cli.command {
         Commands::Init {
@@ -32,7 +35,14 @@ pub fn run() -> Result<(), Error> {
     Ok(())
 }
 
-#[derive(Parser)]
+fn init_tracing() {
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(EnvFilter::from_default_env())
+        .init();
+}
+
+#[derive(Parser, Debug)]
 #[command(
     name = "grypt",
     about = "Git filter encryption tool via age",
@@ -43,7 +53,7 @@ pub struct Cli {
     pub command: Commands,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 pub enum Commands {
     /// Initialize repo
     Init {

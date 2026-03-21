@@ -16,12 +16,11 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        let passphrase_path = ".passphrase";
         Self {
             repository_path: PathBuf::from("."),
-            passphrase_path: PathBuf::from(passphrase_path),
+            passphrase_path: PathBuf::from(".passphrase"),
             include_patterns: vec!["*".to_string()],
-            exclude_patterns: vec![".git*".to_string(), passphrase_path.to_string()],
+            exclude_patterns: vec![],
         }
     }
 }
@@ -49,28 +48,39 @@ impl Config {
         Ok(())
     }
 
-    pub fn resolve_paths(self, base: &Path) -> Self {
-        Self {
-            repository_path: Self::resolve_path(base, &self.repository_path),
-            passphrase_path: Self::resolve_path(base, &self.passphrase_path),
+    /// Returns the filename of the passphrase file.
+    pub fn passphrase_filename(&self) -> Result<String, Error> {
+        Self::filename_string(&self.passphrase_path)
+    }
+
+    /// Returns the filename of the given path.
+    pub fn filename_string(path: &Path) -> Result<String, Error> {
+        Ok(path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .ok_or("Invalid path")?
+            .to_string())
+    }
+
+    pub fn resolve_paths(self, base: &Path) -> Result<Self, Error> {
+        Ok(Self {
+            repository_path: Self::make_path_absolute(base, &self.repository_path)?,
+            passphrase_path: Self::make_path_absolute(base, &self.passphrase_path)?,
             ..self
-        }
+        })
     }
 
     pub fn make_path_relative(base_path: &Path, abs_path: &Path) -> Result<PathBuf, Error> {
-        let rel_path = abs_path
-            .strip_prefix(base_path)
-            .map_err(|_| "abs_path is not inside base_path")?;
-
+        let rel_path = abs_path.strip_prefix(base_path)?;
         Ok(rel_path.to_path_buf())
     }
 
-    fn resolve_path(base: &Path, path: &Path) -> PathBuf {
-        if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            base.join(path)
-        }
+    fn make_path_absolute(base_path: &Path, rel_path: &Path) -> Result<PathBuf, Error> {
+        let path = match rel_path.is_absolute() {
+            true => rel_path.to_path_buf(),
+            false => base_path.join(rel_path),
+        };
+        Ok(path.canonicalize()?)
     }
 }
 

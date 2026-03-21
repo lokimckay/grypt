@@ -1,15 +1,13 @@
 # Contributing
 
-## Development
+## Debugging
 
-### Running commands
-
-```bash
-cargo run init -c ./tmp/.grypt.toml -p passphrase
+```shell
+RUST_LOG=debug cargo run init -c ./tmp/.grypt.toml -p passphrase
 ```
 
-### Testing
+## Running tests
 
-```bash
+```shell
 cargo test
 ```
