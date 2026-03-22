@@ -81,14 +81,23 @@ fn encrypt_bytes(plaintext: &[u8], passphrase: &str) -> Result<Vec<u8>, Error> {
         return Ok(plaintext.to_vec());
     }
 
+    let staged_ciphertext = try_get_staged_ciphertext()?;
+    tracing::debug!(
+        "{} staged ciphertext",
+        staged_ciphertext
+            .is_some()
+            .then(|| "Found")
+            .unwrap_or("Didn't find")
+    );
+
     // If the staged blob decrypts to the same plaintext, reuse its ciphertext exactly so git sees no change.
-    if let Some(staged) = try_get_staged_ciphertext()? {
+    if let Some(staged) = staged_ciphertext {
         if decrypt_bytes(&staged, passphrase)? == plaintext {
             return Ok(staged);
         }
     }
 
-    // Plaintext is new or changed - new encryption required.
+    // Plaintext is new or changed - fresh encryption required.
     let secret = SecretString::from(passphrase.to_string());
     let encryptor = Encryptor::with_user_passphrase(secret);
     let mut ciphertext = Vec::new();
@@ -123,14 +132,12 @@ fn try_get_staged_ciphertext() -> Result<Option<Vec<u8>>, Error> {
         _ => return Ok(None),
     };
 
-    let git_dir = match std::env::var("GIT_DIR").ok() {
-        Some(p) if !p.is_empty() => p,
-        _ => return Ok(None),
+    let repo = match std::env::var("GIT_DIR").ok().filter(|p| !p.is_empty()) {
+        Some(git_dir) => Repository::open(git_dir)?,
+        None => Repository::discover(".")?,
     };
 
-    let repo = Repository::open(git_dir)?;
     let index = repo.index()?;
-
     let entry = match index.get_path(Path::new(&file_path), 0) {
         Some(entry) => entry,
         None => return Ok(None),

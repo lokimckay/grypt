@@ -1,13 +1,55 @@
 use crate::{Config, Error, write_passphrase};
 use git2::Repository;
-use std::{env, fmt::Write, fs, path::Path};
+use std::{env, fmt::Write, fs, path::Path, process::Command};
 
+/// Initializes a new repo with grypt.
 pub fn init(passphrase: &str, config_path: &Path) -> Result<(), Error> {
     let config = ensure_grypt_config(config_path, passphrase)?;
     git2::Repository::init(&config.repository_path)?;
     add_git_attributes(&config, &config_path)?;
     add_git_config(&config)?;
     add_git_ignore(&config)?;
+    Ok(())
+}
+
+/// Forces all repo files to run through the smudge filter.
+/// Useful after a fresh clone of an encrypted repo.
+pub fn decrypt_all() -> Result<(), Error> {
+    let repo = Repository::discover(".")?;
+    let workdir = repo
+        .workdir()
+        .ok_or("bare repositories are not supported")?;
+    let index = repo.index()?;
+
+    // Delete all indexed files.
+    for entry in index.iter() {
+        let path = workdir.join(String::from_utf8(entry.path)?);
+        if path.exists() {
+            fs::remove_file(&path)?;
+        }
+    }
+
+    // Force git to checkout and smudge every deleted file.
+    // We use standard git instead of git2 because git2 bypasses the smudge filter.
+    let checkout = Command::new("git")
+        .arg("checkout-index")
+        .arg("--force")
+        .arg("--all")
+        .status()?;
+
+    if !checkout.success() {
+        return Err("git checkout-index failed".into());
+    }
+
+    // Refresh the index stat cache so git doesn't see the re-written files as dirty.
+    let refresh = Command::new("git")
+        .args(["add", "--renormalize", "."])
+        .status()?;
+
+    if !refresh.success() {
+        return Err("git add --renormalize failed".into());
+    }
+
     Ok(())
 }
 
@@ -56,12 +98,11 @@ fn add_git_attributes(config: &Config, config_path: &Path) -> Result<(), Error> 
 
 fn add_git_config(config: &Config) -> Result<(), Error> {
     let exe_path = path_to_string(env::current_exe()?.as_path())?;
-    let passphrase_path =
-        Config::make_path_relative(&config.repository_path, &config.passphrase_path)?;
-    let passphrase_path = passphrase_path.to_str().ok_or("Invalid path")?.to_string();
-    let clean_cmd = format!("{} clean --passphrase-path {}", exe_path, passphrase_path);
-    let smudge_cmd = format!("{} smudge --passphrase-path {}", exe_path, passphrase_path);
-    let diff_cmd = format!("{} --file-path", smudge_cmd);
+    let pass_path = Config::make_path_relative(&config.repository_path, &config.passphrase_path)?;
+    let pass_path = pass_path.to_str().ok_or("Invalid path")?.to_string();
+    let clean_cmd = format!("{} clean -p {} -f %f", exe_path, pass_path);
+    let smudge_cmd = format!("{} smudge -p {}", exe_path, pass_path);
+    let diff_cmd = format!("{} -f", smudge_cmd);
     let repo = Repository::open(&config.repository_path)?;
     let mut config = repo.config()?;
     config.set_str("filter.grypt.clean", &clean_cmd)?;
