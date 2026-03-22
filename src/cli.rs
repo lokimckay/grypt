@@ -1,6 +1,6 @@
 use crate::Error;
 use clap::{Parser, Subcommand};
-use grypt::{clean, decrypt_all, init, read_passphrase, smudge, smudge_file};
+use grypt::{clean, init, read_passphrase, smudge, smudge_file};
 use std::{env, io, path::PathBuf};
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -34,9 +34,6 @@ pub fn run() -> Result<(), Error> {
                 Some(file_path) => smudge_file(file_path, &passphrase)?,
                 None => smudge(&passphrase)?,
             }
-        }
-        Commands::Decrypt {} => {
-            decrypt_all()?;
         }
     }
 
@@ -101,8 +98,4 @@ pub enum Commands {
         #[arg(short = 'f', long)]
         file_path: Option<PathBuf>,
     },
-
-    /// Force all repo files to run through the smudge filter.
-    /// Useful after a fresh clone of an encrypted repo.
-    Decrypt {},
 }

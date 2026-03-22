@@ -1,4 +1,4 @@
-use crate::{Config, Error, write_passphrase};
+use crate::{AGE_MAGIC_HEADER, Config, Error, write_passphrase};
 use git2::Repository;
 use std::{env, fmt::Write, fs, path::Path, process::Command};
 
@@ -9,6 +9,12 @@ pub fn init(passphrase: &str, config_path: &Path) -> Result<(), Error> {
     add_git_attributes(&config, &config_path)?;
     add_git_config(&config)?;
     add_git_ignore(&config)?;
+
+    if repo_has_encrypted_files(&config.repository_path)? {
+        tracing::debug!("Encrypted files detected, decrypting...");
+        decrypt_all()?;
+    }
+
     Ok(())
 }
 
@@ -51,6 +57,21 @@ pub fn decrypt_all() -> Result<(), Error> {
     }
 
     Ok(())
+}
+
+/// Returns true if any blob in the current index starts with the age magic header.
+fn repo_has_encrypted_files(repo_path: &Path) -> Result<bool, Error> {
+    let repo = Repository::open(repo_path)?;
+    let index = repo.index()?;
+
+    for entry in index.iter() {
+        let blob = repo.find_blob(entry.id)?;
+        if blob.content().starts_with(AGE_MAGIC_HEADER) {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
 }
 
 /// Reads from the given config file path if it exists, or writes the default config to that path.

@@ -8,14 +8,11 @@ use std::{
     path::Path,
 };
 
+pub const AGE_MAGIC_HEADER: &[u8] = b"age-encryption.org/v1";
+
 /// Clean filter: stdin (plaintext) -> stdout (ciphertext)
 pub fn clean(passphrase: &str) -> Result<(), Error> {
     encrypt_stream(io::stdin().lock(), io::stdout().lock(), passphrase)
-}
-
-pub fn clean_file(file_path: impl AsRef<Path>, passphrase: &str) -> Result<(), Error> {
-    let input = fs::File::open(file_path)?;
-    encrypt_stream(input, io::stdout().lock(), passphrase)
 }
 
 pub fn clean_file_to_file(
@@ -77,7 +74,7 @@ fn decrypt_stream<R: Read, W: Write>(
 /// the existing staged ciphertext to avoid false-dirty in git status due to non-deterministic encryption.
 fn encrypt_bytes(plaintext: &[u8], passphrase: &str) -> Result<Vec<u8>, Error> {
     // Already ciphertext - pass through unchanged.
-    if plaintext.starts_with(b"age-encryption.org/v1") {
+    if plaintext.starts_with(AGE_MAGIC_HEADER) {
         return Ok(plaintext.to_vec());
     }
 
@@ -110,7 +107,7 @@ fn encrypt_bytes(plaintext: &[u8], passphrase: &str) -> Result<Vec<u8>, Error> {
 /// Decrypts ciphertext bytes, returning plaintext.
 fn decrypt_bytes(ciphertext: &[u8], passphrase: &str) -> Result<Vec<u8>, Error> {
     // Already plaintext - pass through unchanged.
-    if !ciphertext.starts_with(b"age-encryption.org/v1") {
+    if !ciphertext.starts_with(AGE_MAGIC_HEADER) {
         return Ok(ciphertext.to_vec());
     }
 
@@ -146,7 +143,7 @@ fn try_get_staged_ciphertext() -> Result<Option<Vec<u8>>, Error> {
     let blob = repo.find_blob(entry.id)?;
     let content = blob.content();
 
-    if content.starts_with(b"age-encryption.org/v1") {
+    if content.starts_with(AGE_MAGIC_HEADER) {
         Ok(Some(content.to_vec()))
     } else {
         Ok(None)
