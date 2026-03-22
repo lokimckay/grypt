@@ -16,7 +16,11 @@ pub fn run() -> Result<(), Error> {
         } => {
             init(&passphrase, &config_path)?;
         }
-        Commands::Clean { passphrase_path } => {
+        Commands::Clean {
+            passphrase_path,
+            file_path,
+        } => {
+            record_file_path(&file_path);
             let passphrase = read_passphrase(&passphrase_path)?;
             clean(&passphrase)?;
         }
@@ -24,6 +28,7 @@ pub fn run() -> Result<(), Error> {
             passphrase_path,
             file_path,
         } => {
+            record_file_path(&file_path);
             let passphrase = read_passphrase(&passphrase_path)?;
             match file_path {
                 Some(file_path) => smudge_file(file_path, &passphrase)?,
@@ -40,6 +45,14 @@ fn init_tracing() {
         .with(fmt::layer())
         .with(EnvFilter::from_default_env())
         .init();
+}
+
+fn record_file_path(file_path: &Option<PathBuf>) {
+    if let Some(file_path) = file_path {
+        unsafe {
+            std::env::set_var("GRYPT_FILE", file_path);
+        }
+    }
 }
 
 #[derive(Parser, Debug)]
@@ -65,14 +78,17 @@ pub enum Commands {
         config_path: PathBuf,
     },
 
-    /// Encrypt stdin -> stdout
+    /// Encrypt stdin/file -> stdout
     Clean {
         /// Path to passphrase file
         #[arg(short = 'p', long, default_value = ".passphrase")]
         passphrase_path: PathBuf,
+        /// Path to file to encrypt. Reads from stdin if not specified.
+        #[arg(short = 'f', long)]
+        file_path: Option<PathBuf>,
     },
 
-    /// Decrypt stdin -> stdout
+    /// Decrypt stdin/file -> stdout
     Smudge {
         /// Path to passphrase file
         #[arg(short = 'p', long, default_value = ".passphrase")]

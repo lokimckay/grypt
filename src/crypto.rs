@@ -1,5 +1,6 @@
 use crate::Error;
 use age::{Decryptor, Encryptor, scrypt::Identity, secrecy::SecretString};
+use git2::Repository;
 use std::{
     fs,
     io::{self, Cursor, Read, Write},
@@ -7,6 +8,7 @@ use std::{
     path::Path,
 };
 
+/// Clean filter: stdin (plaintext) -> stdout (ciphertext)
 pub fn clean(passphrase: &str) -> Result<(), Error> {
     encrypt_stream(io::stdin().lock(), io::stdout().lock(), passphrase)
 }
@@ -26,6 +28,7 @@ pub fn clean_file_to_file(
     encrypt_stream(input, output, passphrase)
 }
 
+/// Smudge filter: stdin (ciphertext) -> stdout (plaintext)
 pub fn smudge(passphrase: &str) -> Result<(), Error> {
     decrypt_stream(io::stdin().lock(), io::stdout().lock(), passphrase)
 }
@@ -47,14 +50,13 @@ pub fn smudge_file_to_file(
 
 fn encrypt_stream<R: Read, W: Write>(
     mut input: R,
-    output: W,
+    mut output: W,
     passphrase: &str,
 ) -> Result<(), Error> {
-    let passphrase = SecretString::from(passphrase.to_string());
-    let encryptor = Encryptor::with_user_passphrase(passphrase);
-    let mut writer = encryptor.wrap_output(output)?;
-    io::copy(&mut input, &mut writer)?;
-    writer.finish()?;
+    let mut plaintext = Vec::new();
+    input.read_to_end(&mut plaintext)?;
+    let ciphertext = encrypt_bytes(&plaintext, passphrase)?;
+    output.write_all(&ciphertext)?;
     Ok(())
 }
 
@@ -63,20 +65,83 @@ fn decrypt_stream<R: Read, W: Write>(
     mut output: W,
     passphrase: &str,
 ) -> Result<(), Error> {
-    let mut buffer = Vec::new();
-    input.read_to_end(&mut buffer)?;
+    let mut ciphertext = Vec::new();
+    input.read_to_end(&mut ciphertext)?;
+    let plaintext = decrypt_bytes(&ciphertext, passphrase)?;
+    output.write_all(&plaintext)?;
+    Ok(())
+}
 
-    if !buffer.starts_with(b"age-encryption.org/v1") {
-        // Already plaintext - pass through unchanged
-        output.write_all(&buffer)?;
-        return Ok(());
+/// Converts plaintext bytes to ciphertext.
+/// If a staged blob exists and decrypts to the same plaintext, re-emits
+/// the existing staged ciphertext to avoid false-dirty in git status due to non-deterministic encryption.
+fn encrypt_bytes(plaintext: &[u8], passphrase: &str) -> Result<Vec<u8>, Error> {
+    // Already ciphertext - pass through unchanged.
+    if plaintext.starts_with(b"age-encryption.org/v1") {
+        return Ok(plaintext.to_vec());
     }
 
-    let mut cursor = Cursor::new(buffer);
+    // If the staged blob decrypts to the same plaintext, reuse its ciphertext exactly so git sees no change.
+    if let Some(staged) = try_get_staged_ciphertext()? {
+        if decrypt_bytes(&staged, passphrase)? == plaintext {
+            return Ok(staged);
+        }
+    }
+
+    // Plaintext is new or changed - new encryption required.
+    let secret = SecretString::from(passphrase.to_string());
+    let encryptor = Encryptor::with_user_passphrase(secret);
+    let mut ciphertext = Vec::new();
+    let mut writer = encryptor.wrap_output(&mut ciphertext)?;
+    writer.write_all(plaintext)?;
+    writer.finish()?;
+    Ok(ciphertext)
+}
+
+/// Decrypts ciphertext bytes, returning plaintext.
+fn decrypt_bytes(ciphertext: &[u8], passphrase: &str) -> Result<Vec<u8>, Error> {
+    // Already plaintext - pass through unchanged.
+    if !ciphertext.starts_with(b"age-encryption.org/v1") {
+        return Ok(ciphertext.to_vec());
+    }
+
+    let mut cursor = Cursor::new(ciphertext);
     let decryptor = Decryptor::new(&mut cursor)?;
-    let passphrase = SecretString::from(passphrase.to_string());
-    let identity = Identity::new(passphrase);
+    let secret = SecretString::from(passphrase.to_string());
+    let identity = Identity::new(secret);
     let mut reader = decryptor.decrypt(iter::once(&identity as _))?;
-    io::copy(&mut reader, &mut output)?;
-    Ok(())
+    let mut plaintext = Vec::new();
+    reader.read_to_end(&mut plaintext)?;
+    Ok(plaintext)
+}
+
+/// Tries to retrieve and return the raw ciphertext bytes of the currently staged file's blob.
+/// Relies on the `GRYPT_FILE` environment variable being set by the git filter command
+fn try_get_staged_ciphertext() -> Result<Option<Vec<u8>>, Error> {
+    let file_path = match std::env::var("GRYPT_FILE").ok() {
+        Some(p) if !p.is_empty() => p,
+        _ => return Ok(None),
+    };
+
+    let git_dir = match std::env::var("GIT_DIR").ok() {
+        Some(p) if !p.is_empty() => p,
+        _ => return Ok(None),
+    };
+
+    let repo = Repository::open(git_dir)?;
+    let index = repo.index()?;
+
+    let entry = match index.get_path(Path::new(&file_path), 0) {
+        Some(entry) => entry,
+        None => return Ok(None),
+    };
+
+    let blob = repo.find_blob(entry.id)?;
+    let content = blob.content();
+
+    if content.starts_with(b"age-encryption.org/v1") {
+        Ok(Some(content.to_vec()))
+    } else {
+        Ok(None)
+    }
 }

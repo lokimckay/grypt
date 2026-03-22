@@ -8,6 +8,11 @@ type Error = Box<dyn std::error::Error>;
 const PASSPHRASE: &str = "supersecret";
 const SECRET_NOTE: &str = "# Secret Note\nBank: 123456";
 
+fn create_secret_file(path: &Path) -> Result<PathBuf, Error> {
+    fs::write(path, SECRET_NOTE)?;
+    Ok(path.to_path_buf())
+}
+
 #[test]
 fn test_encrypt_decrypt_roundtrip() -> Result<(), Error> {
     let temp_dir = tempdir_in(".")?;
@@ -77,7 +82,46 @@ fn test_git_commit_encrypt() -> Result<(), Error> {
     Ok(())
 }
 
-fn create_secret_file(path: &Path) -> Result<PathBuf, Error> {
-    fs::write(path, SECRET_NOTE)?;
-    Ok(path.to_path_buf())
+#[test]
+fn test_git_status_clean_after_commit() -> Result<(), Error> {
+    let mut grypt_cmd = Command::cargo_bin("grypt")?;
+    let temp_dir = tempdir_in(".")?;
+    let repo_path = temp_dir.path();
+    let config_path = repo_path.join(".grypt.toml");
+    create_secret_file(&repo_path.join("notes.md"))?;
+
+    grypt_cmd
+        .arg("init")
+        .arg("--passphrase")
+        .arg(PASSPHRASE)
+        .arg("--config-path")
+        .arg(config_path)
+        .assert()
+        .success();
+
+    Command::new("git")
+        .args(&["add", "."])
+        .current_dir(repo_path)
+        .assert()
+        .success();
+
+    Command::new("git")
+        .args(&["commit", "-m", "Initial commit"])
+        .current_dir(repo_path)
+        .assert()
+        .success();
+
+    // `git status --porcelain` outputs nothing when the working tree is clean.
+    let output = Command::new("git")
+        .args(&["status", "--porcelain"])
+        .current_dir(repo_path)
+        .output()?;
+
+    let status = String::from_utf8(output.stdout)?;
+    assert!(
+        status.trim().is_empty(),
+        "git status should be clean after commit, but got:\n{status}"
+    );
+
+    Ok(())
 }
