@@ -17,11 +17,15 @@ If you forget your passphrase and lose your local copy of the repository, the en
 
 ## Usage
 
-### Pushing to a remote repository
+### Install
 
 ```shell
 cargo install --git https://github.com/lokimckay/grypt
-cd /path/to/repo
+```
+
+### Pushing to a remote repository
+
+```shell
 grypt init -p secretpassphrase
 git add .
 git commit -m "init"
@@ -32,4 +36,10 @@ Pushed files will be encrypted with the passphrase `secretpassphrase`.
 
 ### Cloning a repository
 
-TBA
+```shell
+git clone https://github.com/username/repository
+cd repository
+grypt init -p secretpassphrase
+```
+
+Cloned files will be decrypted using the passphrase `secretpassphrase`.
