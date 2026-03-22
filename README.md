@@ -19,7 +19,7 @@ git commit -m "init"
 git push
 ```
 
-Pushed files will be encrypted with the passphrase `secretpassphrase`.
+✔️ Pushed files are encrypted to `age` blobs.
 
 ### Cloning a repository
 
@@ -29,7 +29,7 @@ cd repository
 grypt init -p secretpassphrase
 ```
 
-Cloned files will be decrypted using the passphrase `secretpassphrase`.
+✔️ Cloned files are decrypted to plaintext.
 
 ## How does it work?
 
