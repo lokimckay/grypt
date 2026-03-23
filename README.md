@@ -37,6 +37,14 @@ grypt init -p secretpassphrase
 - Git `clean` and `smudge` filters encrypt and decrypt the files whenever you commit or checkout.
 - Local files remain as plaintext, remote repository receives encrypted data.
 
+## How can I be sure that my files are encrypted before pushing?
+
+After running `git add .` and `git commit -m "message"`, run this command:  
+`git show HEAD:my_file.md`
+
+You should see this magic header at the top of the encrypted output:  
+`age-encryption.org/v1`
+
 ## Should you use this?
 
 This project should not be used in serious contexts.
